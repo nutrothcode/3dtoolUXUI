@@ -1,50 +1,16 @@
-import { useState, useRef, useCallback, useEffect } from 'react'
-
-/* ── types ── */
-export type BoneNode = {
-  id: string
-  label: string
-  parentId: string | null
-  open: boolean
-  visible: boolean
-}
-
-const INITIAL_BONES: BoneNode[] = [
-  { id: 'character', label: 'Character', parentId: null, open: true, visible: true },
-  { id: 'body', label: 'Body', parentId: 'character', open: true, visible: true },
-  { id: 'root', label: 'root', parentId: 'body', open: true, visible: true },
-  { id: 'pelvis', label: 'pelvis', parentId: 'root', open: true, visible: true },
-  { id: 'spine_01', label: 'spine_01', parentId: 'pelvis', open: true, visible: true },
-  { id: 'spine_02', label: 'spine_02', parentId: 'spine_01', open: true, visible: true },
-  { id: 'spine_03', label: 'spine_03', parentId: 'spine_02', open: true, visible: true },
-  { id: 'chest', label: 'chest', parentId: 'spine_03', open: true, visible: true },
-  { id: 'neck', label: 'neck', parentId: 'chest', open: true, visible: true },
-  { id: 'head', label: 'head', parentId: 'neck', open: true, visible: true },
-  { id: 'clavicle_l', label: 'clavicle_l', parentId: 'spine_03', open: true, visible: true },
-  { id: 'upperarm_l', label: 'upperarm_l', parentId: 'clavicle_l', open: true, visible: true },
-  { id: 'lowerarm_l', label: 'lowerarm_l', parentId: 'upperarm_l', open: true, visible: true },
-  { id: 'hand_l', label: 'hand_l', parentId: 'lowerarm_l', open: false, visible: true },
-  { id: 'clavicle_r', label: 'clavicle_r', parentId: 'spine_03', open: true, visible: true },
-  { id: 'upperarm_r', label: 'upperarm_r', parentId: 'clavicle_r', open: true, visible: true },
-  { id: 'lowerarm_r', label: 'lowerarm_r', parentId: 'upperarm_r', open: true, visible: true },
-  { id: 'hand_r', label: 'hand_r', parentId: 'lowerarm_r', open: false, visible: true },
-  { id: 'thigh_l', label: 'thigh_l', parentId: 'pelvis', open: true, visible: true },
-  { id: 'calf_l', label: 'calf_l', parentId: 'thigh_l', open: true, visible: true },
-  { id: 'foot_l', label: 'foot_l', parentId: 'calf_l', open: false, visible: true },
-  { id: 'thigh_r', label: 'thigh_r', parentId: 'pelvis', open: true, visible: true },
-  { id: 'calf_r', label: 'calf_r', parentId: 'thigh_r', open: true, visible: true },
-  { id: 'foot_r', label: 'foot_r', parentId: 'calf_r', open: false, visible: true },
-]
+import { useRef, useCallback, useEffect, useState } from 'react'
+import { useSceneStore, type SceneNode, type SceneNodeType } from '../core/SceneStore'
+import { useSelection } from '../core/SelectionStore'
 
 type DropPos = { id: string; where: 'before' | 'after' | 'inside' } | null
 type CtxMenu = { id: string; x: number; y: number } | null
 
 /* ── build ordered display list ── */
 function buildList(
-  nodes: BoneNode[],
+  nodes: SceneNode[],
   parentId: string | null,
   depth: number,
-  out: { node: BoneNode; depth: number }[],
+  out: { node: SceneNode; depth: number }[],
 ) {
   const children = nodes.filter(n => n.parentId === parentId)
   for (const c of children) {
@@ -54,27 +20,40 @@ function buildList(
 }
 
 /* ── collect all descendant ids ── */
-function descendants(nodes: BoneNode[], id: string): string[] {
+function descendants(nodes: SceneNode[], id: string): string[] {
   const children = nodes.filter(n => n.parentId === id)
   return children.flatMap(c => [c.id, ...descendants(nodes, c.id)])
 }
 
-/* ── unique id ── */
 let _uid = 0
-const uid = () => `bone_${++_uid}`
+const uid = () => `node_${++_uid}`
+
+/* ── node type icon + color ── */
+const NODE_TYPE_META: Record<SceneNodeType, { icon: string; color: string }> = {
+  mesh:     { icon: '⬡', color: '#4a90d9' },
+  group:    { icon: '▣', color: '#f0c040' },
+  bone:     { icon: '◆', color: '#27c96a' },
+  light:    { icon: '☀', color: '#f09030' },
+  camera:   { icon: '◎', color: '#c060d0' },
+  material: { icon: '◈', color: '#e91e8c' },
+}
 
 export default function HierarchyPanel() {
-  const [nodes, setNodes] = useState<BoneNode[]>(INITIAL_BONES)
-  const [selected, setSelected] = useState<string>('head')
+  const { nodes, dispatch } = useSceneStore()
+  const { primaryId, dispatch: selDispatch } = useSelection()
+
+  const selected = primaryId ?? ''
+  const setSelected = (id: string) => selDispatch({ type: 'SELECT', id })
+
   const [renamingId, setRenamingId] = useState<string | null>(null)
   const [renameVal, setRenameVal] = useState('')
   const [dragId, setDragId] = useState<string | null>(null)
   const [dropPos, setDropPos] = useState<DropPos>(null)
   const [ctxMenu, setCtxMenu] = useState<CtxMenu>(null)
   const [search, setSearch] = useState('')
+  const [addType, setAddType] = useState<SceneNodeType>('mesh')
   const renameRef = useRef<HTMLInputElement>(null)
 
-  /* close context menu on outside click */
   useEffect(() => {
     if (!ctxMenu) return
     const close = () => setCtxMenu(null)
@@ -82,7 +61,6 @@ export default function HierarchyPanel() {
     return () => window.removeEventListener('click', close)
   }, [ctxMenu])
 
-  /* focus rename input when it appears */
   useEffect(() => {
     if (renamingId && renameRef.current) {
       renameRef.current.focus()
@@ -91,18 +69,17 @@ export default function HierarchyPanel() {
   }, [renamingId])
 
   /* ── display list ── */
-  const displayList: { node: BoneNode; depth: number }[] = []
+  const displayList: { node: SceneNode; depth: number }[] = []
   buildList(nodes, null, 0, displayList)
 
   const filtered = search
-    ? displayList.filter(({ node }) =>
-        node.label.toLowerCase().includes(search.toLowerCase()))
+    ? displayList.filter(({ node }) => node.label.toLowerCase().includes(search.toLowerCase()))
     : displayList
 
   /* ── helpers ── */
-  const update = useCallback((id: string, patch: Partial<BoneNode>) => {
-    setNodes(prev => prev.map(n => n.id === id ? { ...n, ...patch } : n))
-  }, [])
+  const update = useCallback((id: string, patch: Partial<SceneNode>) => {
+    dispatch({ type: 'UPDATE_NODE', id, patch })
+  }, [dispatch])
 
   const startRename = (id: string) => {
     const n = nodes.find(n => n.id === id)
@@ -113,38 +90,33 @@ export default function HierarchyPanel() {
   }
 
   const commitRename = () => {
-    if (renamingId && renameVal.trim()) {
-      update(renamingId, { label: renameVal.trim() })
-    }
+    if (renamingId && renameVal.trim()) update(renamingId, { label: renameVal.trim() })
     setRenamingId(null)
   }
 
   const deleteNode = (id: string) => {
-    const toRemove = new Set([id, ...descendants(nodes, id)])
-    setNodes(prev => prev.filter(n => !toRemove.has(n.id)))
-    if (selected && toRemove.has(selected)) setSelected('')
+    dispatch({ type: 'DELETE_NODE', id, andDescendants: true })
+    if (selected === id) setSelected('')
     setCtxMenu(null)
   }
 
-  const addBone = (parentId: string | null = selected || null) => {
-    const newNode: BoneNode = {
-      id: uid(),
-      label: 'new_bone',
-      parentId,
-      open: false,
-      visible: true,
+  const addNode = (parentId: string | null, type: SceneNodeType = addType) => {
+    const typeLabel = type.charAt(0).toUpperCase() + type.slice(1)
+    const newNode: SceneNode = {
+      id: uid(), label: `new_${type}`, type, parentId, open: false, visible: true, locked: false,
     }
-    setNodes(prev => [...prev, newNode])
+    dispatch({ type: 'ADD_NODE', node: newNode })
     setSelected(newNode.id)
     setTimeout(() => startRename(newNode.id), 30)
     setCtxMenu(null)
+    return newNode
   }
 
   const duplicate = (id: string) => {
     const src = nodes.find(n => n.id === id)
     if (!src) return
-    const newNode: BoneNode = { ...src, id: uid(), label: src.label + '_copy' }
-    setNodes(prev => [...prev, newNode])
+    const newNode: SceneNode = { ...src, id: uid(), label: src.label + '_copy' }
+    dispatch({ type: 'ADD_NODE', node: newNode })
     setSelected(newNode.id)
     setCtxMenu(null)
   }
@@ -161,18 +133,14 @@ export default function HierarchyPanel() {
     const newIdx = idx + dir
     if (newIdx < 0 || newIdx >= sibs.length) return
     const swapId = sibs[newIdx].id
-    setNodes(prev => {
-      const a = prev.findIndex(n => n.id === id)
-      const b = prev.findIndex(n => n.id === swapId)
-      const next = [...prev]
-      ;[next[a], next[b]] = [next[b], next[a]]
-      return next
-    })
+    // swap in array by moving before/after sibling
+    const where = dir === -1 ? 'before' : 'after'
+    dispatch({ type: 'MOVE_NODE', dragId: id, targetId: swapId, where })
     setCtxMenu(null)
   }
 
-  const expandAll = () => setNodes(prev => prev.map(n => ({ ...n, open: true })))
-  const collapseAll = () => setNodes(prev => prev.map(n => ({ ...n, open: false })))
+  const expandAll = () => nodes.forEach(n => update(n.id, { open: true }))
+  const collapseAll = () => nodes.forEach(n => update(n.id, { open: false }))
 
   /* ── drag & drop ── */
   const handleDragOver = (e: React.DragEvent, targetId: string) => {
@@ -181,52 +149,16 @@ export default function HierarchyPanel() {
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
     const y = e.clientY - rect.top
     const h = rect.height
-    const where: 'before' | 'after' | 'inside' =
-      y < h * 0.28 ? 'before' : y > h * 0.72 ? 'after' : 'inside'
+    const where: 'before' | 'after' | 'inside' = y < h * 0.28 ? 'before' : y > h * 0.72 ? 'after' : 'inside'
     setDropPos({ id: targetId, where })
   }
 
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault()
     if (!dragId || !dropPos) { setDragId(null); setDropPos(null); return }
-    const { id: targetId, where } = dropPos
-    if (targetId === dragId) { setDragId(null); setDropPos(null); return }
-    if (descendants(nodes, dragId).includes(targetId)) { setDragId(null); setDropPos(null); return }
-
-    setNodes(prev => {
-      const target = prev.find(n => n.id === targetId)!
-      let updated = prev.filter(n => n.id !== dragId)
-      const dragNode = prev.find(n => n.id === dragId)!
-
-      let newParent: string | null
-      if (where === 'inside') {
-        newParent = targetId
-      } else {
-        newParent = target.parentId
-      }
-
-      const patched = { ...dragNode, parentId: newParent }
-
-      const insertIdx = updated.findIndex(n => n.id === targetId)
-      if (where === 'before') {
-        updated.splice(insertIdx, 0, patched)
-      } else if (where === 'after') {
-        updated.splice(insertIdx + 1, 0, patched)
-      } else {
-        updated.push(patched)
-      }
-      return updated
-    })
-
+    dispatch({ type: 'MOVE_NODE', dragId, targetId: dropPos.id, where: dropPos.where })
     setDragId(null)
     setDropPos(null)
-  }
-
-  /* ── node type color ── */
-  const nodeColor = (id: string) => {
-    if (id === 'character') return '#e91e8c'
-    if (id === 'body') return '#4a90d9'
-    return '#27c96a'
   }
 
   const selNode = nodes.find(n => n.id === selected)
@@ -243,11 +175,11 @@ export default function HierarchyPanel() {
           <input
             value={search}
             onChange={e => setSearch(e.target.value)}
-            placeholder="Search hierarchy..."
+            placeholder="Search scene nodes..."
             style={{ width: '100%', background: '#181626', border: '1px solid #252336', borderRadius: 5, color: '#c0bfd4', padding: '4px 8px 4px 24px', fontSize: 10.5 }}
           />
           {search && (
-            <button onClick={() => setSearch('')} style={{ position: 'absolute', right: 6, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: '#6a6888', cursor: 'pointer', fontSize: 11, padding: 0, lineHeight: 1 }}>✕</button>
+            <button onClick={() => setSearch('')} style={{ position: 'absolute', right: 6, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: '#6a6888', cursor: 'pointer', fontSize: 11, padding: 0 }}>✕</button>
           )}
         </div>
         <div style={{ display: 'flex', gap: 4 }}>
@@ -269,10 +201,10 @@ export default function HierarchyPanel() {
           const isDragging = dragId === node.id
           const isDropTarget = dropPos?.id === node.id
           const isRenaming = renamingId === node.id
+          const meta = NODE_TYPE_META[node.type] ?? NODE_TYPE_META.mesh
 
           return (
             <div key={node.id}>
-              {/* Drop indicator — BEFORE */}
               {isDropTarget && dropPos?.where === 'before' && (
                 <div style={{ height: 2, background: '#e91e8c', margin: `0 0 0 ${8 + depth * 14}px`, borderRadius: 1 }} />
               )}
@@ -287,10 +219,9 @@ export default function HierarchyPanel() {
                 onContextMenu={e => { e.preventDefault(); setSelected(node.id); setCtxMenu({ id: node.id, x: e.clientX, y: e.clientY }) }}
                 style={{
                   display: 'flex', alignItems: 'center',
-                  paddingLeft: 8 + depth * 14,
-                  paddingRight: 8, paddingTop: 3, paddingBottom: 3,
+                  paddingLeft: 8 + depth * 14, paddingRight: 8, paddingTop: 3, paddingBottom: 3,
                   cursor: 'pointer',
-                  opacity: isDragging ? 0.4 : 1,
+                  opacity: isDragging ? 0.4 : node.locked ? 0.6 : 1,
                   background: isSelected
                     ? 'rgba(233,30,140,0.18)'
                     : isDropTarget && dropPos?.where === 'inside'
@@ -298,7 +229,6 @@ export default function HierarchyPanel() {
                       : 'transparent',
                   outline: isDropTarget && dropPos?.where === 'inside' ? '1px solid #e91e8c' : 'none',
                   outlineOffset: -1,
-                  transition: 'background 0.08s',
                 }}
                 onMouseEnter={e => { if (!isSelected) (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.04)' }}
                 onMouseLeave={e => { if (!isSelected) (e.currentTarget as HTMLElement).style.background = 'transparent' }}
@@ -314,8 +244,8 @@ export default function HierarchyPanel() {
                   {node.open ? '▼' : '▶'}
                 </span>
 
-                {/* Node type diamond */}
-                <span style={{ fontSize: 9, color: nodeColor(node.id), marginRight: 5, flexShrink: 0 }}>◆</span>
+                {/* Node type icon */}
+                <span style={{ fontSize: 9, color: meta.color, marginRight: 5, flexShrink: 0 }}>{meta.icon}</span>
 
                 {/* Label or rename input */}
                 {isRenaming ? (
@@ -324,11 +254,7 @@ export default function HierarchyPanel() {
                     value={renameVal}
                     onChange={e => setRenameVal(e.target.value)}
                     onBlur={commitRename}
-                    onKeyDown={e => {
-                      if (e.key === 'Enter') commitRename()
-                      if (e.key === 'Escape') setRenamingId(null)
-                      e.stopPropagation()
-                    }}
+                    onKeyDown={e => { if (e.key === 'Enter') commitRename(); if (e.key === 'Escape') setRenamingId(null); e.stopPropagation() }}
                     onClick={e => e.stopPropagation()}
                     style={{ flex: 1, background: '#252336', border: '1px solid #e91e8c', borderRadius: 3, color: '#e0dff0', padding: '1px 5px', fontSize: 10.5, outline: 'none' }}
                   />
@@ -339,8 +265,13 @@ export default function HierarchyPanel() {
                     fontWeight: isSelected ? 600 : 400,
                     textDecoration: node.visible ? 'none' : 'line-through',
                     overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                  }}>{node.label}</span>
+                  }}>
+                    {node.label}
+                  </span>
                 )}
+
+                {/* Lock icon */}
+                {node.locked && <span style={{ fontSize: 9, color: '#5a5878', marginLeft: 3, flexShrink: 0 }}>🔒</span>}
 
                 {/* Visibility eye */}
                 <span
@@ -350,7 +281,6 @@ export default function HierarchyPanel() {
                 >👁</span>
               </div>
 
-              {/* Drop indicator — AFTER */}
               {isDropTarget && dropPos?.where === 'after' && (
                 <div style={{ height: 2, background: '#e91e8c', margin: `0 0 0 ${8 + depth * 14}px`, borderRadius: 1 }} />
               )}
@@ -360,16 +290,30 @@ export default function HierarchyPanel() {
 
         {filtered.length === 0 && (
           <div style={{ textAlign: 'center', color: '#3e3c58', fontSize: 11, padding: '20px 0' }}>
-            {search ? 'No bones match search' : 'No bones'}
+            {search ? 'No scene nodes match' : 'No scene nodes'}
           </div>
         )}
       </div>
 
       {/* Bottom actions */}
-      <div style={{ padding: '8px 10px', borderTop: '1px solid #1e1b2c', display: 'flex', gap: 5, flexShrink: 0 }}>
-        <button onClick={() => addBone(selected || null)} style={{ flex: 1, padding: '5px 4px', border: '1px solid #252336', borderRadius: 5, background: '#181626', color: '#c0bfd4', fontSize: 10, cursor: 'pointer' }}>+ Add Bone</button>
-        <button onClick={() => selected && startRename(selected)} disabled={!selected} style={{ flex: 1, padding: '5px 4px', border: '1px solid #252336', borderRadius: 5, background: '#181626', color: selected ? '#c0bfd4' : '#3e3c58', fontSize: 10, cursor: selected ? 'pointer' : 'default' }}>Rename</button>
-        <button onClick={() => selected && deleteNode(selected)} disabled={!selected} style={{ padding: '5px 8px', border: '1px solid rgba(224,64,64,0.35)', borderRadius: 5, background: 'rgba(224,64,64,0.08)', color: selected ? '#e04040' : '#3e3c58', fontSize: 10, cursor: selected ? 'pointer' : 'default' }}>Delete</button>
+      <div style={{ padding: '6px 10px', borderTop: '1px solid #1e1b2c', flexShrink: 0 }}>
+        <div style={{ display: 'flex', gap: 4, marginBottom: 5 }}>
+          <select
+            value={addType}
+            onChange={e => setAddType(e.target.value as SceneNodeType)}
+            style={{ flex: 1, background: '#181626', border: '1px solid #252336', borderRadius: 4, color: '#c0bfd4', padding: '3px 6px', fontSize: 10, cursor: 'pointer' }}
+          >
+            {(Object.keys(NODE_TYPE_META) as SceneNodeType[]).map(t => (
+              <option key={t} value={t}>{NODE_TYPE_META[t].icon} {t.charAt(0).toUpperCase() + t.slice(1)}</option>
+            ))}
+          </select>
+          <button onClick={() => addNode(selected || null)} style={{ flex: 1, padding: '4px', border: '1px solid #252336', borderRadius: 5, background: '#181626', color: '#c0bfd4', fontSize: 10, cursor: 'pointer' }}>+ Add Node</button>
+        </div>
+        <div style={{ display: 'flex', gap: 4 }}>
+          <button onClick={() => selected && startRename(selected)} disabled={!selected} style={{ flex: 1, padding: '4px', border: '1px solid #252336', borderRadius: 5, background: '#181626', color: selected ? '#c0bfd4' : '#3e3c58', fontSize: 10, cursor: selected ? 'pointer' : 'default' }}>Rename</button>
+          <button onClick={() => selected && update(selected, { locked: !selNode?.locked })} disabled={!selected} style={{ padding: '4px 7px', border: '1px solid #252336', borderRadius: 5, background: '#181626', color: selNode?.locked ? '#e91e8c' : '#6a6888', fontSize: 10, cursor: selected ? 'pointer' : 'default' }} title="Toggle lock">🔒</button>
+          <button onClick={() => selected && deleteNode(selected)} disabled={!selected} style={{ padding: '4px 8px', border: '1px solid rgba(224,64,64,0.35)', borderRadius: 5, background: 'rgba(224,64,64,0.08)', color: selected ? '#e04040' : '#3e3c58', fontSize: 10, cursor: selected ? 'pointer' : 'default' }}>Delete</button>
+        </div>
       </div>
 
       {/* Context menu */}
@@ -379,17 +323,18 @@ export default function HierarchyPanel() {
           style={{
             position: 'fixed', left: ctxMenu.x, top: ctxMenu.y, zIndex: 9999,
             background: '#18162a', border: '1px solid #2e2c48', borderRadius: 7,
-            boxShadow: '0 8px 32px rgba(0,0,0,0.6)', minWidth: 160, overflow: 'hidden',
+            boxShadow: '0 8px 32px rgba(0,0,0,0.6)', minWidth: 170, overflow: 'hidden',
           }}
         >
           {[
             { label: '✏️  Rename', action: () => startRename(ctxMenu.id) },
-            { label: '➕  Add Child Bone', action: () => addBone(ctxMenu.id) },
+            { label: `➕  Add Child ${addType.charAt(0).toUpperCase() + addType.slice(1)}`, action: () => addNode(ctxMenu.id) },
             { label: '📋  Duplicate', action: () => duplicate(ctxMenu.id) },
             { label: '⬆️  Move Up', action: () => moveAmongSiblings(ctxMenu.id, -1) },
             { label: '⬇️  Move Down', action: () => moveAmongSiblings(ctxMenu.id, 1) },
             null,
             { label: nodes.find(n => n.id === ctxMenu.id)?.visible ? '🙈  Hide' : '👁  Show', action: () => { const n = nodes.find(n => n.id === ctxMenu.id); if (n) update(ctxMenu.id, { visible: !n.visible }); setCtxMenu(null) } },
+            { label: nodes.find(n => n.id === ctxMenu.id)?.locked ? '🔓  Unlock' : '🔒  Lock', action: () => { const n = nodes.find(n => n.id === ctxMenu.id); if (n) update(ctxMenu.id, { locked: !n.locked }); setCtxMenu(null) } },
             null,
             { label: '🗑️  Delete', action: () => deleteNode(ctxMenu.id), danger: true },
           ].map((item, i) =>

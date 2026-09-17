@@ -4,6 +4,10 @@ import {
   MODEL_TYPES, ASSETS_BY_TYPE, getModelType,
   type ModelTypeId, type ModelAsset,
 } from '../modelTypes'
+import { useSceneStore } from '../core/SceneStore'
+import { useProjectStore } from '../core/ProjectStore'
+import { useSelection } from '../core/SelectionStore'
+import { getTemplate } from '../templates/templates'
 
 /* ── small helpers ── */
 function InfoRow({ label, value }: { label: string; value: string }) {
@@ -142,105 +146,208 @@ function MyAssetsTab({ modelTypeId, onSelect, selected }: { modelTypeId: ModelTy
   )
 }
 
-/* ── PROJECT tab ── */
-type ProjectEntry = { id: string; name: string; emoji: string; g1: string; g2: string; category: string; fileSize: string; addedAt: string; visible: boolean }
+/* ── PROJECT tab — reads from SceneStore + ProjectStore ── */
+function ProjectTab() {
+  const { nodes, dispatch: sceneDispatch } = useSceneStore()
+  const { project, dispatch: projDispatch } = useProjectStore()
+  const { primaryId, dispatch: selDispatch } = useSelection()
+  const template = getTemplate(project.modelTypeId)
 
-function ProjectTab({ assets, modelTypeName, modelTypeIcon }: { assets: ModelAsset[]; modelTypeName: string; modelTypeIcon: string }) {
-  const [entries, setEntries] = useState<ProjectEntry[]>(() =>
-    assets.slice(0, 6).map((a, i) => ({
-      id: a.id, name: a.name, emoji: a.emoji, g1: a.g1, g2: a.g2,
-      category: a.category, fileSize: a.fileSize,
-      addedAt: `2024-11-${String(10 + i).padStart(2, '0')}`,
-      visible: true,
-    }))
-  )
   const [projSearch, setProjSearch] = useState('')
-  const [selId, setSelId] = useState(entries[0]?.id ?? '')
+  const [editingName, setEditingName] = useState(false)
+  const [nameVal, setNameVal] = useState(project.name)
 
-  const filtered = entries.filter(e =>
-    !projSearch || e.name.toLowerCase().includes(projSearch.toLowerCase())
+  // Top-level scene nodes as "assembled parts"
+  const topLevel = nodes.filter(n => n.parentId === null)
+  const filtered = topLevel.filter(n =>
+    !projSearch || n.label.toLowerCase().includes(projSearch.toLowerCase())
   )
-  const sel = entries.find(e => e.id === selId)
-
-  const toggleVisible = (id: string) =>
-    setEntries(prev => prev.map(e => e.id === id ? { ...e, visible: !e.visible } : e))
-
-  const removeEntry = (id: string) =>
-    setEntries(prev => prev.filter(e => e.id !== id))
+  const selId = primaryId ?? ''
 
   return (
     <>
       {/* Project header */}
       <div style={{ padding: '8px 10px 6px', flexShrink: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', background: '#141220', borderRadius: 8, border: '1px solid #1e1b2c', marginBottom: 6 }}>
-          <span style={{ fontSize: 20 }}>{modelTypeIcon}</span>
+          <span style={{ fontSize: 20 }}>{template.icon}</span>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 11, fontWeight: 700, color: '#e0dff0' }}>MyProject</div>
-            <div style={{ fontSize: 9.5, color: '#6a6888' }}>{modelTypeName} · {entries.length} parts assembled</div>
+            {editingName ? (
+              <input
+                value={nameVal}
+                onChange={e => setNameVal(e.target.value)}
+                onBlur={() => { projDispatch({ type: 'SET_NAME', name: nameVal }); setEditingName(false) }}
+                onKeyDown={e => { if (e.key === 'Enter') { projDispatch({ type: 'SET_NAME', name: nameVal }); setEditingName(false) } }}
+                autoFocus
+                style={{ width: '100%', background: '#252336', border: '1px solid #e91e8c', borderRadius: 4, color: '#e0dff0', padding: '2px 6px', fontSize: 11, fontWeight: 700 }}
+              />
+            ) : (
+              <div onDoubleClick={() => setEditingName(true)} style={{ fontSize: 11, fontWeight: 700, color: '#e0dff0', cursor: 'text' }} title="Double-click to rename">{project.name}</div>
+            )}
+            <div style={{ fontSize: 9.5, color: '#6a6888' }}>{template.name} · {nodes.length} scene nodes · Modified {project.modified}</div>
           </div>
           <button style={{ padding: '3px 8px', border: '1px solid #252336', borderRadius: 5, background: '#181626', color: '#c0bfd4', fontSize: 9.5, cursor: 'pointer' }}>Settings</button>
         </div>
 
         <div style={{ position: 'relative' }}>
           <span style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', fontSize: 11, color: '#3e3c58', pointerEvents: 'none' }}>🔍</span>
-          <input value={projSearch} onChange={e => setProjSearch(e.target.value)} placeholder="Filter project parts..."
+          <input value={projSearch} onChange={e => setProjSearch(e.target.value)} placeholder="Filter scene nodes..."
             style={{ width: '100%', background: '#181626', border: '1px solid #252336', borderRadius: 6, color: '#c0bfd4', padding: '5px 8px 5px 26px', fontSize: 10.5 }} />
         </div>
       </div>
 
-      {/* Part list with visibility + remove */}
+      {/* Project stats */}
+      <div style={{ display: 'flex', gap: 4, padding: '0 10px 6px', flexShrink: 0 }}>
+        {[
+          { label: 'Nodes', value: String(nodes.length) },
+          { label: 'Meshes', value: String(nodes.filter(n => n.type === 'mesh').length) },
+          { label: 'Bones', value: String(nodes.filter(n => n.type === 'bone').length) },
+          { label: 'Hidden', value: String(nodes.filter(n => !n.visible).length) },
+        ].map(s => (
+          <div key={s.label} style={{ flex: 1, background: '#141220', borderRadius: 5, border: '1px solid #1e1b2c', padding: '4px 6px', textAlign: 'center' }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: '#c0bfd4' }}>{s.value}</div>
+            <div style={{ fontSize: 8.5, color: '#4a4868' }}>{s.label}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Scene node list */}
       <div style={{ flex: 1, overflowY: 'auto', padding: '4px 10px' }}>
-        <div style={{ fontSize: 9.5, color: '#6a6888', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 4 }}>Assembled Parts ({filtered.length})</div>
-        {filtered.map(e => (
-          <div key={e.id} onClick={() => setSelId(e.id)} style={{
+        <div style={{ fontSize: 9.5, color: '#6a6888', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 4 }}>Scene Root Nodes ({filtered.length})</div>
+        {filtered.map(n => (
+          <div key={n.id} onClick={() => selDispatch({ type: 'SELECT', id: n.id })} style={{
             display: 'flex', alignItems: 'center', gap: 6, padding: '6px 8px', marginBottom: 3,
-            borderRadius: 7, border: `1.5px solid ${selId === e.id ? '#e91e8c' : '#1e1b2c'}`,
-            background: selId === e.id ? 'rgba(233,30,140,0.07)' : '#141220',
-            cursor: 'pointer', opacity: e.visible ? 1 : 0.45, transition: 'opacity 0.15s, border-color 0.1s',
+            borderRadius: 7, border: `1.5px solid ${selId === n.id ? '#e91e8c' : '#1e1b2c'}`,
+            background: selId === n.id ? 'rgba(233,30,140,0.07)' : '#141220',
+            cursor: 'pointer', opacity: n.visible ? 1 : 0.45,
           }}>
-            <div style={{ width: 30, height: 30, borderRadius: 5, background: `radial-gradient(ellipse at 40% 35%, ${e.g1}, ${e.g2} 55%, #070810)`, border: '1px solid #252336', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, flexShrink: 0 }}>{e.emoji}</div>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 10.5, fontWeight: 600, color: selId === e.id ? '#e91e8c' : '#c0bfd4', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.name}</div>
-              <div style={{ fontSize: 9, color: '#4a4868' }}>{e.category} · {e.fileSize}</div>
+            <div style={{ width: 28, height: 28, borderRadius: 5, background: 'rgba(60,50,100,0.6)', border: '1px solid #252336', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, flexShrink: 0 }}>
+              {n.type === 'mesh' ? '⬡' : n.type === 'group' ? '▣' : n.type === 'bone' ? '◆' : n.type === 'light' ? '☀' : n.type === 'camera' ? '◎' : '◈'}
             </div>
-            {/* Visibility toggle */}
-            <button onClick={ev => { ev.stopPropagation(); toggleVisible(e.id) }} title={e.visible ? 'Hide' : 'Show'} style={{ width: 22, height: 22, border: 'none', borderRadius: 4, background: 'transparent', color: e.visible ? '#8a8aaa' : '#3e3c58', cursor: 'pointer', fontSize: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-              {e.visible ? '👁' : '🚫'}
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 10.5, fontWeight: 600, color: selId === n.id ? '#e91e8c' : '#c0bfd4', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{n.label}</div>
+              <div style={{ fontSize: 9, color: '#4a4868' }}>{n.type} · {nodes.filter(c => c.parentId === n.id).length} children</div>
+            </div>
+            <button onClick={ev => { ev.stopPropagation(); sceneDispatch({ type: 'UPDATE_NODE', id: n.id, patch: { visible: !n.visible } }) }} style={{ width: 20, height: 20, border: 'none', background: 'transparent', color: n.visible ? '#8a8aaa' : '#3e3c58', cursor: 'pointer', fontSize: 11 }}>
+              {n.visible ? '👁' : '🚫'}
             </button>
-            {/* Remove */}
-            <button onClick={ev => { ev.stopPropagation(); removeEntry(e.id) }} title="Remove from project" style={{ width: 22, height: 22, border: 'none', borderRadius: 4, background: 'transparent', color: '#3e3c58', cursor: 'pointer', fontSize: 11, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>✕</button>
+            <button onClick={ev => { ev.stopPropagation(); sceneDispatch({ type: 'DELETE_NODE', id: n.id, andDescendants: true }) }} style={{ width: 20, height: 20, border: 'none', background: 'transparent', color: '#3e3c58', cursor: 'pointer', fontSize: 10 }}>✕</button>
           </div>
         ))}
         {filtered.length === 0 && (
           <div style={{ textAlign: 'center', color: '#3e3c58', fontSize: 11, padding: '24px 0' }}>
-            {entries.length === 0 ? 'No parts assembled yet' : 'No parts match filter'}
+            {nodes.length === 0 ? 'No scene nodes yet' : 'No nodes match filter'}
           </div>
         )}
-
-        {/* Add from library shortcut */}
-        <button onClick={() => {}} style={{ width: '100%', marginTop: 6, padding: '7px', border: '1px dashed #252336', borderRadius: 7, background: 'none', color: '#6a6888', fontSize: 10.5, cursor: 'pointer' }}>
-          + Add from Model Library
-        </button>
       </div>
 
-      {/* Selected part details */}
-      {sel && (
-        <div style={{ borderTop: '1px solid #1e1b2c', flexShrink: 0 }}>
-          <div style={{ padding: '6px 12px 4px', fontSize: 12, fontWeight: 700, color: '#c0bfd4' }}>Part Details</div>
-          <div style={{ padding: '0 12px 6px' }}>
-            <InfoRow label="Name" value={sel.name} />
-            <InfoRow label="Category" value={sel.category} />
-            <InfoRow label="File Size" value={sel.fileSize} />
-            <InfoRow label="Added" value={sel.addedAt} />
-            <InfoRow label="Visible" value={sel.visible ? 'Yes' : 'Hidden'} />
-          </div>
-          <div style={{ display: 'flex', gap: 6, padding: '0 10px 10px' }}>
-            <ActionBtn pink>Focus in Viewport</ActionBtn>
-            <ActionBtn danger>Remove</ActionBtn>
-          </div>
+      {/* Assembly slots from template */}
+      <div style={{ borderTop: '1px solid #1e1b2c', flexShrink: 0 }}>
+        <div style={{ padding: '6px 12px 4px', fontSize: 11, fontWeight: 700, color: '#c0bfd4' }}>Assembly Slots</div>
+        <div style={{ padding: '0 10px 10px', display: 'flex', flexDirection: 'column', gap: 3 }}>
+          {template.assemblySlots.map(slot => (
+            <div key={slot.id} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 8px', background: '#141220', borderRadius: 5, border: '1px solid #1e1b2c' }}>
+              <div style={{ width: 6, height: 6, borderRadius: '50%', background: slot.required ? '#e91e8c' : '#3a3858', flexShrink: 0 }} />
+              <span style={{ fontSize: 10, color: '#8a8aaa', flex: 1 }}>{slot.label}</span>
+              <span style={{ fontSize: 9, color: '#3e3c58' }}>{slot.required ? 'Required' : 'Optional'}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </>
+  )
+}
+
+function RightProjectManager({ modelTypeId, isCharacter, openSections, toggleSection }: {
+  modelTypeId: ModelTypeId; isCharacter: boolean;
+  openSections: Set<string>; toggleSection: (s: string) => void
+}) {
+  const { project, dispatch: projDispatch } = useProjectStore()
+  const { nodes } = useSceneStore()
+  const assets = ASSETS_BY_TYPE[modelTypeId] ?? []
+  const modelType = getModelType(modelTypeId)
+  const template = getTemplate(modelTypeId)
+
+  const [editingName, setEditingName] = useState(false)
+  const [draftName, setDraftName] = useState(project.name)
+
+  const meshCount = nodes.filter(n => n.type === 'mesh').length
+  const hiddenCount = nodes.filter(n => !n.visible).length
+
+  return (
+    <div style={{ flex: 1, overflowY: 'auto' }}>
+      <div style={{ padding: '10px 12px', borderBottom: '1px solid #1e1b2c' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+          {editingName ? (
+            <input
+              autoFocus value={draftName}
+              onChange={e => setDraftName(e.target.value)}
+              onBlur={() => { projDispatch({ type: 'SET_NAME', name: draftName }); setEditingName(false) }}
+              onKeyDown={e => { if (e.key === 'Enter') { projDispatch({ type: 'SET_NAME', name: draftName }); setEditingName(false) } if (e.key === 'Escape') setEditingName(false) }}
+              style={{ background: '#0e0c1a', border: '1px solid #e91e8c', borderRadius: 4, color: '#fff', fontSize: 11, fontWeight: 700, padding: '1px 6px', flex: 1, marginRight: 6 }}
+            />
+          ) : (
+            <span onDoubleClick={() => { setDraftName(project.name); setEditingName(true) }} title="Double-click to rename" style={{ fontSize: 11, fontWeight: 700, color: '#c0bfd4', cursor: 'text' }}>{project.name}</span>
+          )}
+          <button style={{ padding: '3px 8px', border: '1px solid #252336', borderRadius: 5, background: '#181626', color: '#c0bfd4', fontSize: 9.5, cursor: 'pointer' }}>+ New</button>
+        </div>
+        <InfoRow label="Model Type" value={modelType.name} />
+        {modelTypeId === 'custom' && project.customTypeName && <InfoRow label="Custom Type" value={project.customTypeName} />}
+        <InfoRow label="Created" value={project.created} />
+        <InfoRow label="Modified" value={project.modified} />
+        <InfoRow label="Total Nodes" value={String(nodes.length)} />
+        <InfoRow label="Meshes" value={String(meshCount)} />
+        {hiddenCount > 0 && <InfoRow label="Hidden" value={String(hiddenCount)} />}
+      </div>
+
+      <SectionHeader label="Assembly Slots" open={openSections.has('Assembly Slots')} onToggle={() => toggleSection('Assembly Slots')} />
+      {openSections.has('Assembly Slots') && (
+        <div style={{ padding: '6px 12px', borderBottom: '1px solid #1e1b2c' }}>
+          {template.assemblySlots.map(slot => (
+            <div key={slot.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 0', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+              <div style={{ width: 8, height: 8, borderRadius: '50%', background: slot.required ? '#e91e8c' : '#4a4868', flexShrink: 0 }} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 10.5, color: '#c0bfd4' }}>{slot.label}</div>
+                <div style={{ fontSize: 9, color: '#4a4868' }}>{slot.required ? 'Required' : 'Optional'} · {slot.accepts.join(', ')}</div>
+              </div>
+            </div>
+          ))}
         </div>
       )}
-    </>
+
+      <SectionHeader label="Project Assets" open={openSections.has('Project Assets')} onToggle={() => toggleSection('Project Assets')} />
+      {openSections.has('Project Assets') && (
+        <div style={{ padding: '6px 12px', borderBottom: '1px solid #1e1b2c' }}>
+          {assets.slice(0, 5).map(a => (
+            <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 0', borderBottom: '1px solid rgba(255,255,255,0.04)', cursor: 'pointer' }}>
+              <div style={{ width: 24, height: 24, borderRadius: 4, background: `radial-gradient(circle at 40% 35%, ${a.g1}, #07081060)`, border: '1px solid #252336', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12 }}>{a.emoji}</div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 10.5, color: '#c0bfd4', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.name}</div>
+                <div style={{ fontSize: 9.5, color: '#4a4868' }}>{a.category} · {a.fileSize}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <SectionHeader label="Export Settings" open={openSections.has('Export Settings')} onToggle={() => toggleSection('Export Settings')} />
+      {openSections.has('Export Settings') && (
+        <div style={{ padding: '8px 12px', borderBottom: '1px solid #1e1b2c' }}>
+          <div style={{ marginBottom: 6 }}>
+            <div style={{ fontSize: 10, color: '#6a6888', marginBottom: 3 }}>Format</div>
+            <select style={{ width: '100%', background: '#181626', border: '1px solid #252336', borderRadius: 5, color: '#c0bfd4', padding: '4px 8px', fontSize: 10.5, cursor: 'pointer' }}>
+              <option>FBX (Unity)</option><option>FBX (Unreal)</option><option>GLB / glTF</option><option>OBJ</option><option>USD</option>
+            </select>
+          </div>
+          {([['Include Textures', true], ['Embed Materials', false], ...(isCharacter ? [['Export Rig', true], ['Bake Animations', false]] as [string, boolean][] : [])] as [string, boolean][]).map(([label, checked]) => (
+            <label key={label} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 5, cursor: 'pointer', fontSize: 10.5, color: '#c0bfd4' }}>
+              <input type="checkbox" defaultChecked={checked} style={{ accentColor: '#e91e8c', width: 12, height: 12 }} />
+              {label}
+            </label>
+          ))}
+          <button style={{ width: '100%', padding: '6px', marginTop: 6, border: 'none', borderRadius: 6, background: '#e91e8c', color: '#fff', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>Export Project</button>
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -462,7 +569,7 @@ export default function Step01Model({ modelTypeId, onModelTypeChange }: Props) {
         {libTab === 'My Assets' && <MyAssetsTab modelTypeId={modelTypeId} onSelect={setSelected} selected={selected} />}
 
         {/* ── PROJECT TAB ── */}
-        {libTab === 'Project' && <ProjectTab assets={assets} modelTypeName={modelType.name} modelTypeIcon={modelType.icon} />}
+        {libTab === 'Project' && <ProjectTab />}
       </div>
 
       {/* ── CENTER: Viewport ── */}
@@ -702,82 +809,7 @@ export default function Step01Model({ modelTypeId, onModelTypeChange }: Props) {
         )}
 
         {/* ── PROJECT MANAGER TAB ── */}
-        {inspTab === 'Project Manager' && (
-          <div style={{ flex: 1, overflowY: 'auto' }}>
-            <div style={{ padding: '10px 12px', borderBottom: '1px solid #1e1b2c' }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-                <span style={{ fontSize: 11, fontWeight: 700, color: '#c0bfd4' }}>MyProject</span>
-                <button style={{ padding: '3px 8px', border: '1px solid #252336', borderRadius: 5, background: '#181626', color: '#c0bfd4', fontSize: 9.5, cursor: 'pointer' }}>+ New</button>
-              </div>
-              <InfoRow label="Model Type" value={modelType.name} />
-              {modelTypeId === 'custom' && customTypeName && <InfoRow label="Custom Type" value={customTypeName} />}
-              <InfoRow label="Created" value="2024-11-02" />
-              <InfoRow label="Modified" value="2024-11-10" />
-              <InfoRow label="Total Assets" value={String(assets.length)} />
-            </div>
-
-            <SectionHeader label="Scene Files" open={openSections.has('Scene Files')} onToggle={() => toggleSection('Scene Files')} />
-            {openSections.has('Scene Files') && (
-              <div style={{ padding: '6px 12px', borderBottom: '1px solid #1e1b2c' }}>
-                {[
-                  { name: `Main_${modelType.name}.scn`, size: '4.2 MB', modified: '11/10' },
-                  { name: `${modelType.name}_v2.scn`, size: '3.8 MB', modified: '11/08' },
-                ].map(f => (
-                  <div key={f.name} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 0', borderBottom: '1px solid rgba(255,255,255,0.04)', cursor: 'pointer' }}>
-                    <span style={{ fontSize: 12 }}>📄</span>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 10.5, color: '#c0bfd4', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name}</div>
-                      <div style={{ fontSize: 9.5, color: '#4a4868' }}>{f.size} · {f.modified}</div>
-                    </div>
-                  </div>
-                ))}
-                <button style={{ width: '100%', padding: '5px', marginTop: 6, border: '1px dashed #252336', borderRadius: 6, background: 'none', color: '#6a6888', fontSize: 10, cursor: 'pointer' }}>+ Add Scene File</button>
-              </div>
-            )}
-
-            <SectionHeader label="Project Assets" open={openSections.has('Project Assets')} onToggle={() => toggleSection('Project Assets')} />
-            {openSections.has('Project Assets') && (
-              <div style={{ padding: '6px 12px', borderBottom: '1px solid #1e1b2c' }}>
-                {assets.slice(0, 5).map(a => (
-                  <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 0', borderBottom: '1px solid rgba(255,255,255,0.04)', cursor: 'pointer' }}>
-                    <div style={{ width: 24, height: 24, borderRadius: 4, background: `radial-gradient(circle at 40% 35%, ${a.g1}, #07081060)`, border: '1px solid #252336', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12 }}>{a.emoji}</div>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 10.5, color: '#c0bfd4', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.name}</div>
-                      <div style={{ fontSize: 9.5, color: '#4a4868' }}>{a.category} · {a.fileSize}</div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            <SectionHeader label="Export Settings" open={openSections.has('Export Settings')} onToggle={() => toggleSection('Export Settings')} />
-            {openSections.has('Export Settings') && (
-              <div style={{ padding: '8px 12px', borderBottom: '1px solid #1e1b2c' }}>
-                <div style={{ marginBottom: 6 }}>
-                  <div style={{ fontSize: 10, color: '#6a6888', marginBottom: 3 }}>Format</div>
-                  <select style={{ width: '100%', background: '#181626', border: '1px solid #252336', borderRadius: 5, color: '#c0bfd4', padding: '4px 8px', fontSize: 10.5, cursor: 'pointer' }}>
-                    <option>FBX (Unity)</option>
-                    <option>FBX (Unreal)</option>
-                    <option>GLB / glTF</option>
-                    <option>OBJ</option>
-                    <option>USD</option>
-                  </select>
-                </div>
-                {[
-                  ['Include Textures', true],
-                  ['Embed Materials', false],
-                  ...(isCharacter ? [['Export Rig', true], ['Bake Animations', false]] as [string, boolean][] : []),
-                ].map(([label, checked]) => (
-                  <label key={label as string} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 5, cursor: 'pointer', fontSize: 10.5, color: '#c0bfd4' }}>
-                    <input type="checkbox" defaultChecked={checked as boolean} style={{ accentColor: '#e91e8c', width: 12, height: 12 }} />
-                    {label as string}
-                  </label>
-                ))}
-                <button style={{ width: '100%', padding: '6px', marginTop: 6, border: 'none', borderRadius: 6, background: '#e91e8c', color: '#fff', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>Export Project</button>
-              </div>
-            )}
-          </div>
-        )}
+        {inspTab === 'Project Manager' && <RightProjectManager modelTypeId={modelTypeId} isCharacter={isCharacter} openSections={openSections} toggleSection={toggleSection} />}
 
         {/* ── HIERARCHY TAB ── */}
         {inspTab === 'Hierarchy' && <HierarchyPanel />}

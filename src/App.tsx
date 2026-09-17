@@ -18,6 +18,9 @@ import Step09 from './steps/Step09Texture'
 import Step10 from './steps/Step10Animate'
 import Step11 from './steps/Step11Export'
 import { getModelType, type ModelTypeId, type StepId } from './modelTypes'
+import { ProjectProvider } from './core/ProjectStore'
+import { SelectionProvider } from './core/SelectionStore'
+import { SceneProvider } from './core/SceneStore'
 
 // Maps step id → component (components that don't need model type props)
 const STEP_COMPONENT_MAP: Partial<Record<StepId, React.ComponentType>> = {
@@ -51,6 +54,9 @@ export default function App() {
   const currentStepId = steps[stepIndex] ?? 'model'
 
   return (
+    <ProjectProvider>
+    <SelectionProvider>
+    <SceneProvider key={modelTypeId} modelTypeId={modelTypeId}>
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden', background: '#0d0a14' }}>
       <TopBar navTo={handleNav} />
       <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
@@ -108,5 +114,8 @@ export default function App() {
         </div>
       </div>
     </div>
+    </SceneProvider>
+    </SelectionProvider>
+    </ProjectProvider>
   )
 }

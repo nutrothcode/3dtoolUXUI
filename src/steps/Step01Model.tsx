@@ -7,7 +7,7 @@ import {
 import { useSceneStore } from '../core/SceneStore'
 import { useProjectStore } from '../core/ProjectStore'
 import { useSelection } from '../core/SelectionStore'
-import { getTemplate } from '../templates/templates'
+import { getTemplate } from '../templates/index'
 
 /* ── small helpers ── */
 function InfoRow({ label, value }: { label: string; value: string }) {

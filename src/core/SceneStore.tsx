@@ -1,5 +1,5 @@
 import { createContext, useContext, useReducer, type ReactNode } from 'react'
-import { getTemplate } from '../templates/templates'
+import { getTemplate } from '../templates/index'
 import type { ModelTypeId } from '../modelTypes'
 
 /* ── SceneNode (replaces BoneNode) ── */

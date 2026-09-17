@@ -2,40 +2,101 @@
 @import 'tailwindcss';
 
 :root {
-  --bg: #0c0e16;
-  --p1: #11131b;
-  --p2: #171a24;
-  --p3: #1e2130;
-  --p4: #242737;
-  --hov: #2a2d3e;
-  --sel: #1a3060;
-  --bd: #272a3c;
-  --bd2: #20233200;
-  --pink: #e91e8c;
-  --pink-lo: rgba(233,30,140,0.15);
-  --pink-hi: #ff3aa0;
-  --txt: #dde0eb;
-  --t2: #80839a;
-  --t3: #44475c;
-  --grn: #27c96a;
-  --blu: #4a90d9;
-  --yel: #f0c040;
-  --red: #e54040;
+  /* Backgrounds */
+  --bg-app:       #0b0912;
+  --bg-panel:     #0f0d18;
+  --bg-panel-2:   #141220;
+  --bg-panel-3:   #1a1828;
+  --bg-input:     #181626;
+  --bg-hover:     #1e1c2e;
+  --bg-active:    #241f38;
+
+  /* Borders */
+  --border:       #252336;
+  --border-2:     #1e1c2e;
+  --border-focus: #e91e8c;
+
+  /* Text */
+  --text-primary:   #d8d5e8;
+  --text-secondary: #8a8aa8;
+  --text-muted:     #4a4868;
+  --text-dim:       #2e2c44;
+
+  /* Accent */
+  --accent:       #e91e8c;
+  --accent-hover: #ff2fa0;
+  --accent-lo:    rgba(233,30,140,0.12);
+  --accent-border: rgba(233,30,140,0.3);
+
+  /* Status */
+  --success:  #27c96a;
+  --warning:  #f0a030;
+  --danger:   #e04040;
+  --info:     #4a90d9;
+
+  /* Spacing */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 20px;
+  --sp-6: 24px;
+  --sp-8: 32px;
+
+  /* Radius */
+  --r-sm: 4px;
+  --r-md: 6px;
+  --r-lg: 8px;
+  --r-xl: 10px;
+
+  /* Sidebar */
+  --sidebar-w: 192px;
+  --topbar-h: 46px;
+  --statusbar-h: 26px;
+  --toolbar-h: 34px;
 }
+
 *, *::before, *::after { box-sizing: border-box; }
+
 html, body, #root {
   margin: 0; padding: 0;
   height: 100%;
   overflow: hidden;
-  background: var(--bg);
-  color: var(--txt);
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  background: var(--bg-app);
+  color: var(--text-primary);
+  font-family: 'Inter', -apple-system, system-ui, sans-serif;
   font-size: 11.5px;
+  line-height: 1.45;
   -webkit-font-smoothing: antialiased;
 }
-input, select, textarea { font-family: inherit; font-size: inherit; }
-button { cursor: pointer; font-family: inherit; font-size: inherit; }
-::-webkit-scrollbar { width: 4px; height: 4px; }
-::-webkit-scrollbar-track { background: var(--p1); }
-::-webkit-scrollbar-thumb { background: var(--bd); border-radius: 2px; }
-::-webkit-scrollbar-thumb:hover { background: var(--t3); }
+
+input, select, textarea, button {
+  font-family: inherit;
+  font-size: inherit;
+  color: inherit;
+}
+input { outline: none; }
+button { cursor: pointer; }
+
+/* Scrollbars */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
+/* Common utility classes */
+.panel {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+}
+.panel-2 {
+  background: var(--bg-panel-2);
+  border: 1px solid var(--border);
+}
+.section-label {
+  font-size: 9.5px;
+  font-weight: 700;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}

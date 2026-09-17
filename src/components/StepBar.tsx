@@ -1,33 +1,26 @@
-interface Props { step: number; setStep: (s: number) => void }
+import type { StepId } from '../modelTypes'
+import { ALL_STEP_LABELS } from '../modelTypes'
 
-const STEPS = [
-  { n: 1,  label: 'Parts' },
-  { n: 2,  label: 'Assemble' },
-  { n: 3,  label: 'Body Rig' },
-  { n: 4,  label: 'Face Rig' },
-  { n: 5,  label: 'Skin' },
-  { n: 6,  label: 'Clothing' },
-  { n: 7,  label: 'Retopology' },
-  { n: 8,  label: 'UV' },
-  { n: 9,  label: 'Texture' },
-  { n: 10, label: 'Animate' },
-  { n: 11, label: 'Export' },
-]
+interface Props {
+  steps: StepId[]
+  stepIndex: number
+  setStepIndex: (i: number) => void
+}
 
-export default function StepBar({ step, setStep }: Props) {
+export default function StepBar({ steps = [], stepIndex, setStepIndex }: Props) {
   return (
     <div style={{
       height: 62, display: 'flex', alignItems: 'center',
       background: 'var(--p1)', borderBottom: '1px solid var(--bd)',
-      padding: '0 12px', flexShrink: 0,
+      padding: '0 12px', flexShrink: 0, overflow: 'hidden',
     }}>
-      {STEPS.map(s => {
-        const active = step === s.n
-        const done = step > s.n
+      {steps.map((stepId, i) => {
+        const active = stepIndex === i
+        const done = stepIndex > i
         return (
           <button
-            key={s.n}
-            onClick={() => setStep(s.n)}
+            key={stepId}
+            onClick={() => setStepIndex(i)}
             style={{
               flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center',
               justifyContent: 'center', gap: 5, border: 'none', background: 'none',
@@ -44,14 +37,14 @@ export default function StepBar({ step, setStep }: Props) {
               flexShrink: 0,
               transition: 'background 0.15s, border-color 0.15s',
             }}>
-              {s.n}
+              {i + 1}
             </div>
             <span style={{
               fontSize: 10.5, fontWeight: active ? 600 : 400,
               color: active ? 'var(--pink)' : 'var(--t2)',
               whiteSpace: 'nowrap', transition: 'color 0.15s',
             }}>
-              {s.label}
+              {ALL_STEP_LABELS[stepId]}
             </span>
           </button>
         )

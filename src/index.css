@@ -1,0 +1,41 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+@import 'tailwindcss';
+
+:root {
+  --bg: #0c0e16;
+  --p1: #11131b;
+  --p2: #171a24;
+  --p3: #1e2130;
+  --p4: #242737;
+  --hov: #2a2d3e;
+  --sel: #1a3060;
+  --bd: #272a3c;
+  --bd2: #20233200;
+  --pink: #e91e8c;
+  --pink-lo: rgba(233,30,140,0.15);
+  --pink-hi: #ff3aa0;
+  --txt: #dde0eb;
+  --t2: #80839a;
+  --t3: #44475c;
+  --grn: #27c96a;
+  --blu: #4a90d9;
+  --yel: #f0c040;
+  --red: #e54040;
+}
+*, *::before, *::after { box-sizing: border-box; }
+html, body, #root {
+  margin: 0; padding: 0;
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--txt);
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-size: 11.5px;
+  -webkit-font-smoothing: antialiased;
+}
+input, select, textarea { font-family: inherit; font-size: inherit; }
+button { cursor: pointer; font-family: inherit; font-size: inherit; }
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: var(--p1); }
+::-webkit-scrollbar-thumb { background: var(--bd); border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover { background: var(--t3); }
